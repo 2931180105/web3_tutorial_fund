@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.24;
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 
@@ -47,7 +47,7 @@ contract FundMe {
     }
     
     // 将eth转换为美元的单位
-    function convertEthToUsdt(uint256 ethAmount) internal returns (uint256){
+    function convertEthToUsdt(uint256 ethAmount) internal view returns (uint256){
         uint256 ethPrice = uint256(getChainlinkDataFeedLatestAnswer());
         // eth to usdt 单位是8位
         return ethAmount * ethPrice/1e8;
@@ -88,7 +88,7 @@ contract FundMe {
         erc20Addr = addr;
     }
 
-    function getIsCashout() external tokenCall  returns (bool){
+    function getIsCashout() external tokenCall view  returns (bool){
         return isCashout;
     }
 
@@ -104,10 +104,5 @@ contract FundMe {
     modifier onlyOwner(){
         require(msg.sender == owner,"not owner.");
         _;
-    }
-
-    function destroy() public {
-        require(msg.sender == owner, "You are not the owner");
-        selfdestruct(payable(owner));
     }
 }
