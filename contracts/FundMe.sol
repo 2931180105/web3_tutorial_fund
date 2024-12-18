@@ -6,21 +6,24 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 contract FundMe {
     mapping (address => uint256) public funderAmountMap;
     uint constant MIN_FUND_VALUE_USDT = 1e18; // 最小值为1
-    uint constant TARGET_USDT = 1 * 1e18; // 1000 美元
+    uint constant TARGET_USDT = 1000 * 1e18; // 1000 美元
     bool isCashout = false; // 表示是否提现
-    AggregatorV3Interface internal dataFeed;
-    address owner;
+    AggregatorV3Interface public dataFeed;
+    address public owner;
     uint256 deploymentTimestamp;
     uint256 lockTime = 3*24*60; // 锁定时间 秒 默认3天
     address erc20Addr;
 
-    constructor(uint256 _lockTime) {
+    event FundWithdrawByOwner(uint256);
+    event RefundByFunder(address,uint256);
+
+    constructor(uint256 _lockTime,address dataFeedAddr) {
         // sepolia test
         dataFeed = AggregatorV3Interface(
-            0x694AA1769357215DE4FAC081bf1f309aDC325306
+            dataFeedAddr
         );
-         owner = msg.sender;
-         deploymentTimestamp = block.timestamp;// 当前区块的部署时间
+        owner = msg.sender;
+        deploymentTimestamp = block.timestamp;// 当前区块的部署时间
         lockTime = _lockTime;
     }
 
@@ -28,7 +31,7 @@ contract FundMe {
     // 接受用户的众筹
     function fund() external payable {
         require(convertEthToUsdt(msg.value)>= MIN_FUND_VALUE_USDT,"need send more ETH.");
-        require(deploymentTimestamp + lockTime < block.timestamp,"project is close.");
+        require(deploymentTimestamp + lockTime > block.timestamp,"window is close.");
 
        funderAmountMap[msg.sender] += msg.value;
     }
@@ -58,15 +61,21 @@ contract FundMe {
         owner = newOwner;
     }
     
+    function getContractBalance() public onlyOwner view returns (uint256) {
+        return address(this).balance;
+    }
 
     // 当充值的数额大于制定数量，可以提现
     function getFund() external windowClose onlyOwner {
+
+        uint256 balance = address(this).balance;
         require(convertEthToUsdt(address(this).balance) >= TARGET_USDT,"target is smart,not cashout."); 
         // 进行转账
-        payable(msg.sender).transfer(address(this).balance);
+        payable(msg.sender).transfer(balance);
        // bool success = payable(msg.sender).send(address(this).balance);
     //    (bool success,)=payable(msg.sender).call{value:address(this).balance}{""};
         isCashout = true; 
+        emit FundWithdrawByOwner(balance);
     }
 
     // 当众筹结束之后且金额没有达到指定值可以进行退回操作
@@ -74,9 +83,10 @@ contract FundMe {
         require(isCashout == false, "project is enable.");
         require(convertEthToUsdt(address(this).balance) < TARGET_USDT,"target is ok,not cashout."); 
         uint256 amount = funderAmountMap[msg.sender];
-        require(amount != 0,"no recharge.");
+        require(amount != 0,"you no recharge.");
         payable(msg.sender).transfer(amount);
         funderAmountMap[msg.sender] = 0;
+        emit RefundByFunder(msg.sender,amount);
     }
 
     function setFunderToAmount(address addr,uint256 amount) external tokenCall{
@@ -98,7 +108,7 @@ contract FundMe {
     }
 
     modifier windowClose() {
-        require(deploymentTimestamp + lockTime >= block.timestamp,"windows not closed.");
+        require(deploymentTimestamp + lockTime < block.timestamp,"windows not closed.");
         _; // 被限制的函数代码存在的地方
     }
     modifier onlyOwner(){
